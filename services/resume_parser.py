@@ -2,29 +2,15 @@ import os
 import re
 import shutil
 
-import fitz  # PyMuPDF
-import pytesseract
-from PIL import Image
+import fitz
 from docx import Document
 
 
 # -----------------------------
 # TESSERACT SETUP
 # -----------------------------
-tesseract_path = shutil.which("tesseract")
-
-if tesseract_path:
-    pytesseract.pytesseract.tesseract_cmd = tesseract_path
-else:
-    windows_paths = [
-        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
-        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
-    ]
-
-    for path in windows_paths:
-        if os.path.exists(path):
-            pytesseract.pytesseract.tesseract_cmd = path
-            break
+# OCR is intentionally not used on Render Free.
+# This keeps the live application stable.
 
 
 # -----------------------------
@@ -69,6 +55,7 @@ def extract_pdf_text(path):
 
         for page in doc:
             page_text = page.get_text("text")
+
             if page_text:
                 text += page_text + "\n"
 
@@ -76,73 +63,6 @@ def extract_pdf_text(path):
 
     except Exception as e:
         print("PDF text extraction error:", e)
-
-    return text.strip()
-
-
-# -----------------------------
-# LIGHTWEIGHT OCR
-# -----------------------------
-def ocr_pdf(path):
-    text = ""
-
-    try:
-        doc = fitz.open(path)
-
-        # Only process first 3 pages to avoid excessive memory usage
-        max_pages = min(len(doc), 3)
-
-        for page_number in range(max_pages):
-
-            page = doc.load_page(page_number)
-
-            # LOW DPI = much lower memory usage
-            pix = page.get_pixmap(
-                matrix=fitz.Matrix(1.0, 1.0),
-                colorspace=fitz.csRGB,
-                alpha=False
-            )
-
-            image = Image.frombytes(
-                "RGB",
-                [pix.width, pix.height],
-                pix.samples
-            )
-
-            # Resize large images if necessary
-            max_width = 1600
-
-            if image.width > max_width:
-                ratio = max_width / image.width
-                new_height = int(image.height * ratio)
-
-                image = image.resize(
-                    (max_width, new_height)
-                )
-
-            try:
-                page_text = pytesseract.image_to_string(
-                    image,
-                    config="--psm 6",
-                    timeout=35
-                )
-
-                text += page_text + "\n"
-
-            except Exception as ocr_error:
-                print(
-                    f"OCR failed on page {page_number + 1}:",
-                    ocr_error
-                )
-
-            # Explicitly release memory
-            image.close()
-            del pix
-
-        doc.close()
-
-    except Exception as e:
-        print("OCR error:", e)
 
     return text.strip()
 
@@ -189,7 +109,7 @@ def detect_skills(text):
 
 
 # -----------------------------
-# EMAIL
+# EMAIL EXTRACTION
 # -----------------------------
 def extract_email(text):
     match = re.search(
@@ -201,7 +121,7 @@ def extract_email(text):
 
 
 # -----------------------------
-# PHONE
+# PHONE EXTRACTION
 # -----------------------------
 def extract_phone(text):
     match = re.search(
@@ -213,7 +133,7 @@ def extract_phone(text):
 
 
 # -----------------------------
-# NAME
+# NAME EXTRACTION
 # -----------------------------
 def extract_name(text):
     lines = [
@@ -225,7 +145,6 @@ def extract_name(text):
     if not lines:
         return ""
 
-    # Try first meaningful line
     for line in lines[:8]:
 
         clean = re.sub(
@@ -237,6 +156,7 @@ def extract_name(text):
         words = clean.split()
 
         if 2 <= len(words) <= 4:
+
             if not any(
                 keyword in clean.lower()
                 for keyword in [
@@ -256,7 +176,7 @@ def extract_name(text):
 
 
 # -----------------------------
-# MAIN FUNCTION
+# MAIN RESUME FUNCTION
 # -----------------------------
 def extract_resume(path):
 
@@ -264,7 +184,9 @@ def extract_resume(path):
 
     text = ""
 
+    # -------------------------
     # PDF
+    # -------------------------
     if extension == ".pdf":
 
         print("Trying normal PDF text extraction...")
@@ -277,43 +199,71 @@ def extract_resume(path):
 
         else:
 
-            print("Normal PDF text not found.")
-            print("Trying lightweight OCR...")
+            print("Scanned/image PDF detected.")
 
-            text = ocr_pdf(path)
+            return "", {
+                "error": (
+                    "Scanned PDF detected. "
+                    "Please upload a text-based PDF or DOCX."
+                )
+            }
 
+    # -------------------------
     # DOCX
+    # -------------------------
     elif extension == ".docx":
 
         print("Extracting DOCX text...")
+
         text = extract_docx_text(path)
 
+    # -------------------------
     # TXT
+    # -------------------------
     elif extension == ".txt":
 
         try:
+
             with open(
                 path,
                 "r",
                 encoding="utf-8",
                 errors="ignore"
             ) as file:
+
                 text = file.read()
 
         except Exception as e:
+
             print("TXT extraction error:", e)
+            text = ""
 
-    # Unsupported
+    # -------------------------
+    # UNSUPPORTED FILE
+    # -------------------------
     else:
-        text = ""
 
+        return "", {
+            "error": (
+                "Unsupported file format. "
+                "Please upload PDF, DOCX or TXT."
+            )
+        }
+
+    # -------------------------
+    # EMPTY TEXT
+    # -------------------------
     text = text.strip()
 
     if not text:
+
         return "", {
             "error": "Readable text not found."
         }
 
+    # -------------------------
+    # RESUME INFORMATION
+    # -------------------------
     info = {
         "name": extract_name(text),
         "email": extract_email(text),
