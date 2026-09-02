@@ -1,12 +1,133 @@
-{% extends "base.html" %}{% block title %}Upload Resume · AI Job Matcher{% endblock %}
+{% extends "base.html" %}
+
+{% block title %}Upload Resume · AI Job Matcher{% endblock %}
+
 {% block content %}
-<div class="row justify-content-center"><div class="col-lg-7">
-<div class="card p-4 p-md-5">
-<h2 class="fw-bold">Upload your resume</h2><p class="text-muted">PDF or DOCX · Maximum 5 MB</p>
-<form method="post" enctype="multipart/form-data">
-<div class="upload-box mb-3"><input class="form-control form-control-lg" type="file" name="resume" accept=".pdf,.docx" required></div>
-<button class="btn btn-primary btn-lg w-100">Analyze Resume</button>
-</form>
-<div class="small text-muted mt-3">Tip: use a text-based PDF. Scanned/image-only PDFs may not contain extractable text.</div>
-</div></div></div>
+
+<div class="row justify-content-center">
+
+    <div class="col-lg-7">
+
+        <div class="card p-4 p-md-5">
+
+            <h2 class="fw-bold mb-2">
+                Upload your resume
+            </h2>
+
+            <p class="text-muted mb-4">
+                Upload your resume in PDF, DOCX, or TXT format.
+                Maximum file size: 10 MB.
+            </p>
+
+            {% if error %}
+
+            <div class="alert alert-danger">
+                {{ error }}
+            </div>
+
+            {% endif %}
+
+            <form
+                method="POST"
+                enctype="multipart/form-data"
+                id="resumeForm"
+            >
+
+                <div class="upload-box mb-3">
+
+                    <label
+                        for="resume"
+                        class="form-label fw-semibold"
+                    >
+                        Select Resume
+                    </label>
+
+                    <input
+                        id="resume"
+                        class="form-control form-control-lg"
+                        type="file"
+                        name="resume"
+                        accept=".pdf,.docx,.txt"
+                        required
+                    >
+
+                    <div
+                        id="fileName"
+                        class="small text-muted mt-2"
+                    >
+                        No file selected
+                    </div>
+
+                </div>
+
+                <button
+                    type="submit"
+                    class="btn btn-primary btn-lg w-100"
+                    id="analyzeBtn"
+                >
+                    Analyze Resume
+                </button>
+
+            </form>
+
+            <div class="small text-muted mt-3">
+
+                <strong>Supported:</strong>
+                PDF, DOCX, TXT
+
+                <br>
+
+                <strong>Tip:</strong>
+                Use a text-based PDF for best results.
+                Scanned/image-only PDFs are not supported in the production deployment.
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+
+const resumeInput = document.getElementById("resume");
+const fileName = document.getElementById("fileName");
+const resumeForm = document.getElementById("resumeForm");
+const analyzeBtn = document.getElementById("analyzeBtn");
+
+resumeInput.addEventListener("change", function () {
+
+    if (this.files && this.files.length > 0) {
+
+        fileName.textContent =
+            "Selected: " + this.files[0].name;
+
+    } else {
+
+        fileName.textContent =
+            "No file selected";
+
+    }
+
+});
+
+resumeForm.addEventListener("submit", function () {
+
+    if (!resumeInput.files || resumeInput.files.length === 0) {
+
+        alert("Please select a resume file first.");
+
+        return;
+
+    }
+
+    analyzeBtn.disabled = true;
+
+    analyzeBtn.textContent = "Analyzing Resume...";
+
+});
+
+</script>
+
 {% endblock %}
