@@ -1,18 +1,20 @@
 import os
 import sqlite3
-from flask import Flask, render_template, request, redirect, url_for, flash
+from datetime import datetime
 
+from flask import Flask, render_template, request
 from services.resume_parser import extract_resume
 from services.matcher import match_resume_to_job
 from services.ai_analyzer import analyze_job_with_ai
 
 
 app = Flask(__name__)
+
 app.secret_key = "ai-job-scraper-secret-key"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 
+UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
@@ -28,30 +30,177 @@ def get_db_connection():
     return conn
 
 
+def initialize_database():
+
+    conn = get_db_connection()
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            company TEXT NOT NULL,
+            location TEXT,
+            description TEXT,
+            skills TEXT,
+            experience TEXT,
+            url TEXT,
+            source TEXT,
+            created_at TEXT,
+            UNIQUE(title, company, location)
+        )
+    """)
+
+    jobs = [
+        (
+            "Python + Django Intern",
+            "AppNest Demo",
+            "Remote",
+            "Create web features using Django, Python, databases and frontend technologies.",
+            "Python, Django, SQL, HTML, CSS, Git",
+            "0-1 years",
+            "https://example.com/jobs/django-intern",
+            "Dataset"
+        ),
+        (
+            "Junior Data Scientist",
+            "InsightWorks Demo",
+            "Mumbai, India",
+            "Prepare data, build predictive models and communicate findings using Python and machine learning.",
+            "Python, Pandas, Scikit-learn, SQL, Machine Learning",
+            "0-1 years",
+            "https://example.com/jobs/junior-data-scientist",
+            "Dataset"
+        ),
+        (
+            "Full Stack Developer Intern",
+            "WebForge Demo",
+            "Remote",
+            "Build responsive web applications with HTML, CSS, JavaScript and Python backend frameworks.",
+            "HTML, CSS, JavaScript, Python, Django, MongoDB",
+            "0-1 years",
+            "https://example.com/jobs/full-stack-intern",
+            "Dataset"
+        ),
+        (
+            "Cloud Data Engineer Trainee",
+            "CloudCore Demo",
+            "Hyderabad, India",
+            "Assist with ETL pipelines, SQL, data processing and cloud data engineering workflows.",
+            "SQL, Python, ETL, Cloud, Data Engineering",
+            "0-1 years",
+            "https://example.com/jobs/cloud-data-engineer",
+            "Dataset"
+        ),
+        (
+            "Software Engineer Intern",
+            "DevSphere Demo",
+            "Gurugram, India",
+            "Work on software features, debugging, data structures and algorithms using Java or Python.",
+            "Java, Python, DSA, Git, SQL",
+            "0-1 years",
+            "https://example.com/jobs/software-engineer-intern",
+            "Dataset"
+        ),
+        (
+            "Backend Developer Intern",
+            "CodeCraft Demo",
+            "Pune, India",
+            "Develop backend applications using Python, Flask/Django, databases and REST APIs.",
+            "Python, Flask, Django, SQL, REST API",
+            "0-1 years",
+            "https://example.com/jobs/backend-intern",
+            "Dataset"
+        ),
+        (
+            "AI/ML Intern",
+            "NeuralLab Demo",
+            "Remote",
+            "Support AI prototypes using Python, machine learning concepts, NLP and model evaluation.",
+            "Python, AI, Machine Learning, NLP, Git",
+            "0-1 years",
+            "https://example.com/jobs/ai-ml-intern",
+            "Dataset"
+        ),
+        (
+            "Machine Learning Intern",
+            "AIWorks Demo",
+            "Bengaluru, India",
+            "Assist with machine learning experiments, data preprocessing, model evaluation and Python development.",
+            "Python, Machine Learning, Pandas, Scikit-learn, Statistics",
+            "0-1 years",
+            "https://example.com/jobs/ml-intern",
+            "Dataset"
+        ),
+        (
+            "Data Analyst Intern",
+            "DataBridge Demo",
+            "Noida, India",
+            "Analyze datasets using Python, Pandas and SQL. Create reports and dashboards and communicate insights.",
+            "Python, Pandas, SQL, Excel, Data Analysis",
+            "0-1 years",
+            "https://example.com/jobs/data-analyst-intern",
+            "Dataset"
+        ),
+        (
+            "Python Developer Intern",
+            "TechNova Demo",
+            "Remote",
+            "Build Python services and APIs. Work with SQL, Git, REST APIs and basic testing.",
+            "Python, SQL, REST API, Git",
+            "0-1 years",
+            "https://example.com/jobs/python-developer-intern",
+            "Dataset"
+        )
+    ]
+
+    for job in jobs:
+        conn.execute("""
+            INSERT OR IGNORE INTO jobs
+            (
+                title,
+                company,
+                location,
+                description,
+                skills,
+                experience,
+                url,
+                source,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (*job, datetime.now().isoformat()))
+
+    conn.commit()
+    conn.close()
+
+
+# Initialize database when application starts
+initialize_database()
+
+
 @app.route("/")
 def index():
-
-    return render_template(
-        "index.html"
-    )
+    return render_template("index.html")
 
 
-@app.route("/upload", methods=["POST"])
+@app.route("/upload", methods=["GET", "POST"])
 def upload():
 
-    if "resume" not in request.files:
+    # GET request -> show upload page
+    if request.method == "GET":
+        return render_template("upload.html")
 
+    if "resume" not in request.files:
         return render_template(
-            "index.html",
+            "upload.html",
             error="Please select a resume file."
         )
 
     file = request.files["resume"]
 
     if file.filename == "":
-
         return render_template(
-            "index.html",
+            "upload.html",
             error="Please select a resume file."
         )
 
@@ -66,9 +215,8 @@ def upload():
     )[1].lower()
 
     if extension not in allowed_extensions:
-
         return render_template(
-            "index.html",
+            "upload.html",
             error=(
                 "Unsupported file format. "
                 "Please upload PDF, DOCX or TXT."
@@ -93,7 +241,7 @@ def upload():
         print("Resume extraction error:", e)
 
         return render_template(
-            "index.html",
+            "upload.html",
             error=(
                 "Unable to process the resume. "
                 "Please upload a valid PDF or DOCX file."
@@ -108,7 +256,7 @@ def upload():
         )
 
         return render_template(
-            "index.html",
+            "upload.html",
             error=error_message
         )
 
@@ -132,8 +280,17 @@ def upload():
         ""
     )
 
+    conn = get_db_connection()
+
+    jobs_data = conn.execute(
+        "SELECT * FROM jobs"
+    ).fetchall()
+
+    conn.close()
+
     return render_template(
         "jobs.html",
+        jobs=jobs_data,
         resume_text=text,
         resume_name=filename,
         candidate_name=name,
@@ -341,14 +498,20 @@ def file_too_large(error):
 
     return render_template(
         "index.html",
-        error="File is too large. Maximum size is 10 MB."
+        error=(
+            "File is too large. "
+            "Maximum size is 10 MB."
+        )
     ), 413
 
 
 @app.errorhandler(500)
 def internal_error(error):
 
-    print("Internal server error:", error)
+    print(
+        "Internal server error:",
+        error
+    )
 
     return render_template(
         "index.html",
