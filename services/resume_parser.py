@@ -2,87 +2,104 @@ import os
 import re
 import shutil
 
+import fitz  # PyMuPDF
+import pytesseract
+from PIL import Image
+from docx import Document
 
+
+# -----------------------------
+# TESSERACT SETUP
+# -----------------------------
+tesseract_path = shutil.which("tesseract")
+
+if tesseract_path:
+    pytesseract.pytesseract.tesseract_cmd = tesseract_path
+else:
+    windows_paths = [
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+    ]
+
+    for path in windows_paths:
+        if os.path.exists(path):
+            pytesseract.pytesseract.tesseract_cmd = path
+            break
+
+
+# -----------------------------
+# SKILLS
+# -----------------------------
 SKILLS = [
-    "python", "java", "c++", "c", "sql", "oracle",
-    "mongodb", "html", "css", "javascript", "django",
-    "flask", "machine learning", "deep learning",
-    "artificial intelligence", "ai", "data structures",
-    "algorithms", "pandas", "numpy", "scikit-learn",
-    "tensorflow", "pytorch", "git", "github",
-    "rest api", "api", "etl", "data analysis",
-    "data science", "statistics", "aws", "azure",
-    "gcp", "cloud", "excel", "nlp", "power bi"
+    "python",
+    "java",
+    "c",
+    "c++",
+    "sql",
+    "oracle",
+    "html",
+    "css",
+    "django",
+    "mongodb",
+    "machine learning",
+    "artificial intelligence",
+    "ai",
+    "data structures",
+    "algorithms",
+    "nlp",
+    "git",
+    "github",
+    "flask",
+    "pandas",
+    "numpy",
+    "scikit-learn",
+    "tensorflow",
+    "pytorch",
 ]
 
 
-def clean_text(text):
-    text = text.replace("\x00", " ")
-    text = re.sub(r"[ \t]+", " ", text)
-    text = re.sub(r"\n{3,}", "\n\n", text)
+# -----------------------------
+# PDF TEXT EXTRACTION
+# -----------------------------
+def extract_pdf_text(path):
+    text = ""
+
+    try:
+        doc = fitz.open(path)
+
+        for page in doc:
+            page_text = page.get_text("text")
+            if page_text:
+                text += page_text + "\n"
+
+        doc.close()
+
+    except Exception as e:
+        print("PDF text extraction error:", e)
+
     return text.strip()
 
 
-def extract_pdf_text(path):
-    import fitz
-
-    document = fitz.open(path)
-
-    try:
-        text = ""
-
-        for page in document:
-            text += page.get_text("text") + "\n"
-
-        return text
-
-    finally:
-        document.close()
-
-
-def find_tesseract():
-
-    locations = [
-        shutil.which("tesseract"),
-        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
-        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"
-    ]
-
-    for location in locations:
-
-        if location and os.path.exists(location):
-            return location
-
-    return None
-
-
+# -----------------------------
+# LIGHTWEIGHT OCR
+# -----------------------------
 def ocr_pdf(path):
+    text = ""
 
     try:
-        import fitz
-        import pytesseract
-        from PIL import Image
+        doc = fitz.open(path)
 
-    except Exception:
-        return ""
+        # Only process first 3 pages to avoid excessive memory usage
+        max_pages = min(len(doc), 3)
 
-    tesseract = find_tesseract()
+        for page_number in range(max_pages):
 
-    if not tesseract:
-        return ""
+            page = doc.load_page(page_number)
 
-    pytesseract.pytesseract.tesseract_cmd = tesseract
-
-    document = fitz.open(path)
-
-    pages_text = []
-
-    try:
-
-        for page in document:
-
+            # LOW DPI = much lower memory usage
             pix = page.get_pixmap(
-                dpi=220,
+                matrix=fitz.Matrix(1.0, 1.0),
+                colorspace=fitz.csRGB,
                 alpha=False
             )
 
@@ -92,107 +109,216 @@ def ocr_pdf(path):
                 pix.samples
             )
 
-            text = pytesseract.image_to_string(
-                image,
-                config="--psm 6"
-            )
+            # Resize large images if necessary
+            max_width = 1600
 
-            pages_text.append(text)
+            if image.width > max_width:
+                ratio = max_width / image.width
+                new_height = int(image.height * ratio)
 
-    finally:
-        document.close()
-
-    return "\n".join(pages_text)
-
-
-def extract_docx_text(path):
-
-    from docx import Document
-
-    document = Document(path)
-
-    text_parts = []
-
-    for paragraph in document.paragraphs:
-        text_parts.append(paragraph.text)
-
-    for table in document.tables:
-
-        for row in table.rows:
-
-            text_parts.append(
-                " | ".join(
-                    cell.text for cell in row.cells
+                image = image.resize(
+                    (max_width, new_height)
                 )
-            )
 
-    return "\n".join(text_parts)
+            try:
+                page_text = pytesseract.image_to_string(
+                    image,
+                    config="--psm 6",
+                    timeout=35
+                )
+
+                text += page_text + "\n"
+
+            except Exception as ocr_error:
+                print(
+                    f"OCR failed on page {page_number + 1}:",
+                    ocr_error
+                )
+
+            # Explicitly release memory
+            image.close()
+            del pix
+
+        doc.close()
+
+    except Exception as e:
+        print("OCR error:", e)
+
+    return text.strip()
 
 
-def extract_resume(path):
+# -----------------------------
+# DOCX EXTRACTION
+# -----------------------------
+def extract_docx_text(path):
+    text = ""
 
-    extension = os.path.splitext(path)[1].lower()
+    try:
+        doc = Document(path)
 
-    if extension == ".pdf":
+        for paragraph in doc.paragraphs:
+            if paragraph.text:
+                text += paragraph.text + "\n"
 
-        # First try normal PDF text extraction
-        text = clean_text(
-            extract_pdf_text(path)
-        )
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    if cell.text:
+                        text += cell.text + " "
 
-        # If PDF has no readable text,
-        # automatically try OCR
-        if len(re.sub(r"\s+", "", text)) < 30:
+        return text.strip()
 
-            print("Normal PDF text not found.")
-            print("Trying OCR...")
+    except Exception as e:
+        print("DOCX extraction error:", e)
+        return ""
 
-            text = clean_text(
-                ocr_pdf(path)
-            )
 
-    elif extension == ".docx":
+# -----------------------------
+# SKILL DETECTION
+# -----------------------------
+def detect_skills(text):
+    text_lower = text.lower()
 
-        text = clean_text(
-            extract_docx_text(path)
-        )
-
-    else:
-
-        raise ValueError(
-            "Only PDF and DOCX files are supported."
-        )
-
-    lower_text = text.lower()
-
-    detected_skills = []
+    found = []
 
     for skill in SKILLS:
+        if skill.lower() in text_lower:
+            found.append(skill)
 
-        if skill.lower() in lower_text:
-            detected_skills.append(skill)
+    return sorted(set(found))
 
-    emails = re.findall(
-        r"[\w.+-]+@[\w-]+\.[\w.-]+",
+
+# -----------------------------
+# EMAIL
+# -----------------------------
+def extract_email(text):
+    match = re.search(
+        r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
         text
     )
 
-    phones = re.findall(
+    return match.group(0) if match else ""
+
+
+# -----------------------------
+# PHONE
+# -----------------------------
+def extract_phone(text):
+    match = re.search(
         r"(?:\+91[\s-]?)?[6-9]\d{9}",
         text
     )
 
+    return match.group(0) if match else ""
+
+
+# -----------------------------
+# NAME
+# -----------------------------
+def extract_name(text):
     lines = [
         line.strip()
         for line in text.splitlines()
         if line.strip()
     ]
 
-    name = lines[0] if lines else ""
+    if not lines:
+        return ""
 
-    return text, {
-        "name": name,
-        "email": emails[0] if emails else "",
-        "phone": phones[0] if phones else "",
-        "skills": sorted(set(detected_skills))
+    # Try first meaningful line
+    for line in lines[:8]:
+
+        clean = re.sub(
+            r"[^A-Za-z .'-]",
+            "",
+            line
+        ).strip()
+
+        words = clean.split()
+
+        if 2 <= len(words) <= 4:
+            if not any(
+                keyword in clean.lower()
+                for keyword in [
+                    "resume",
+                    "curriculum",
+                    "email",
+                    "phone",
+                    "mobile",
+                    "objective",
+                    "developer",
+                    "engineer"
+                ]
+            ):
+                return clean
+
+    return lines[0]
+
+
+# -----------------------------
+# MAIN FUNCTION
+# -----------------------------
+def extract_resume(path):
+
+    extension = os.path.splitext(path)[1].lower()
+
+    text = ""
+
+    # PDF
+    if extension == ".pdf":
+
+        print("Trying normal PDF text extraction...")
+
+        text = extract_pdf_text(path)
+
+        if text and len(text.strip()) >= 50:
+
+            print("Normal PDF text found.")
+
+        else:
+
+            print("Normal PDF text not found.")
+            print("Trying lightweight OCR...")
+
+            text = ocr_pdf(path)
+
+    # DOCX
+    elif extension == ".docx":
+
+        print("Extracting DOCX text...")
+        text = extract_docx_text(path)
+
+    # TXT
+    elif extension == ".txt":
+
+        try:
+            with open(
+                path,
+                "r",
+                encoding="utf-8",
+                errors="ignore"
+            ) as file:
+                text = file.read()
+
+        except Exception as e:
+            print("TXT extraction error:", e)
+
+    # Unsupported
+    else:
+        text = ""
+
+    text = text.strip()
+
+    if not text:
+        return "", {
+            "error": "Readable text not found."
+        }
+
+    info = {
+        "name": extract_name(text),
+        "email": extract_email(text),
+        "phone": extract_phone(text),
+        "skills": detect_skills(text),
     }
+
+    return text, info
