@@ -1,0 +1,9 @@
+HARSHIT RATHOUR
+Aspiring Computer Science Engineer
+
+Skills: Python, Java, SQL, Machine Learning, HTML, CSS, Django, MongoDB,
+Data Structures, Pandas, Scikit-learn, Git.
+
+Education: B.Tech Computer Science & Engineering (2023-2027)
+
+Project: Student Performance Prediction using Python, Pandas and Scikit-learn.

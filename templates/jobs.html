@@ -1,0 +1,19 @@
+{% extends "base.html" %}{% block title %}Job Matches · AI Job Matcher{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+<div><h2 class="fw-bold mb-1">Recommended Jobs</h2><p class="text-muted mb-0">{% if resume %}Resume: {{resume['filename']}}{% else %}Upload a resume for personalized scores.{% endif %}</p></div>
+</div>
+<form class="card p-3 mb-4" method="get"><input type="hidden" name="resume_id" value="{{resume['id'] if resume else ''}}">
+<div class="row g-2"><div class="col-md-5"><input class="form-control" name="q" value="{{q}}" placeholder="Search role, company, skill"></div>
+<div class="col-md-4"><input class="form-control" name="location" value="{{location}}" placeholder="Location"></div>
+<div class="col-md-3"><button class="btn btn-outline-primary w-100">Search</button></div></div></form>
+{% for job in jobs %}
+<div class="card job-card mb-3 p-4"><div class="row align-items-center">
+<div class="col-md-8"><span class="badge text-bg-light mb-2">{{job.source}}</span><h4>{{job.title}}</h4><p class="mb-1"><b>{{job.company}}</b> · {{job.location}}</p><p class="text-muted mb-2">{{job.description}}</p>
+<div>{% for s in job.matching_skills[:6] %}<span class="badge rounded-pill text-bg-success me-1">{{s}}</span>{% endfor %}
+{% for s in job.missing_skills[:4] %}<span class="badge rounded-pill text-bg-warning me-1">{{s}} missing</span>{% endfor %}</div></div>
+<div class="col-md-4 text-md-end mt-3 mt-md-0"><div class="score">{{job.score}}%</div><div class="text-muted small mb-2">Resume Match</div>
+<a class="btn btn-primary" href="{{url_for('job_details',job_id=job.id,resume_id=resume['id'] if resume else '')}}">View Analysis</a></div>
+</div></div>
+{% else %}<div class="alert alert-info">No jobs found. Try another search.</div>{% endfor %}
+{% endblock %}
