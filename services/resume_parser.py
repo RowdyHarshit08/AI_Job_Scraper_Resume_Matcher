@@ -1,21 +1,10 @@
 import os
 import re
-import shutil
 
 import fitz
 from docx import Document
 
 
-# -----------------------------
-# TESSERACT SETUP
-# -----------------------------
-# OCR is intentionally not used on Render Free.
-# This keeps the live application stable.
-
-
-# -----------------------------
-# SKILLS
-# -----------------------------
 SKILLS = [
     "python",
     "java",
@@ -44,9 +33,6 @@ SKILLS = [
 ]
 
 
-# -----------------------------
-# PDF TEXT EXTRACTION
-# -----------------------------
 def extract_pdf_text(path):
     text = ""
 
@@ -62,14 +48,11 @@ def extract_pdf_text(path):
         doc.close()
 
     except Exception as e:
-        print("PDF text extraction error:", e)
+        print("PDF extraction error:", e)
 
     return text.strip()
 
 
-# -----------------------------
-# DOCX EXTRACTION
-# -----------------------------
 def extract_docx_text(path):
     text = ""
 
@@ -86,16 +69,12 @@ def extract_docx_text(path):
                     if cell.text:
                         text += cell.text + " "
 
-        return text.strip()
-
     except Exception as e:
         print("DOCX extraction error:", e)
-        return ""
+
+    return text.strip()
 
 
-# -----------------------------
-# SKILL DETECTION
-# -----------------------------
 def detect_skills(text):
     text_lower = text.lower()
 
@@ -108,9 +87,6 @@ def detect_skills(text):
     return sorted(set(found))
 
 
-# -----------------------------
-# EMAIL EXTRACTION
-# -----------------------------
 def extract_email(text):
     match = re.search(
         r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
@@ -120,9 +96,6 @@ def extract_email(text):
     return match.group(0) if match else ""
 
 
-# -----------------------------
-# PHONE EXTRACTION
-# -----------------------------
 def extract_phone(text):
     match = re.search(
         r"(?:\+91[\s-]?)?[6-9]\d{9}",
@@ -132,9 +105,6 @@ def extract_phone(text):
     return match.group(0) if match else ""
 
 
-# -----------------------------
-# NAME EXTRACTION
-# -----------------------------
 def extract_name(text):
     lines = [
         line.strip()
@@ -157,90 +127,69 @@ def extract_name(text):
 
         if 2 <= len(words) <= 4:
 
+            blocked = [
+                "resume",
+                "curriculum",
+                "email",
+                "phone",
+                "mobile",
+                "objective",
+                "developer",
+                "engineer"
+            ]
+
             if not any(
-                keyword in clean.lower()
-                for keyword in [
-                    "resume",
-                    "curriculum",
-                    "email",
-                    "phone",
-                    "mobile",
-                    "objective",
-                    "developer",
-                    "engineer"
-                ]
+                word in clean.lower()
+                for word in blocked
             ):
                 return clean
 
     return lines[0]
 
 
-# -----------------------------
-# MAIN RESUME FUNCTION
-# -----------------------------
 def extract_resume(path):
 
     extension = os.path.splitext(path)[1].lower()
 
     text = ""
 
-    # -------------------------
-    # PDF
-    # -------------------------
     if extension == ".pdf":
 
         print("Trying normal PDF text extraction...")
 
         text = extract_pdf_text(path)
 
-        if text and len(text.strip()) >= 50:
-
-            print("Normal PDF text found.")
-
-        else:
+        if not text or len(text.strip()) < 50:
 
             print("Scanned/image PDF detected.")
 
             return "", {
                 "error": (
-                    "Scanned PDF detected. "
-                    "Please upload a text-based PDF or DOCX."
+                    "This PDF appears to be scanned or image-based. "
+                    "Please upload a text-based PDF or DOCX resume."
                 )
             }
 
-    # -------------------------
-    # DOCX
-    # -------------------------
     elif extension == ".docx":
 
         print("Extracting DOCX text...")
 
         text = extract_docx_text(path)
 
-    # -------------------------
-    # TXT
-    # -------------------------
     elif extension == ".txt":
 
         try:
-
             with open(
                 path,
                 "r",
                 encoding="utf-8",
                 errors="ignore"
             ) as file:
-
                 text = file.read()
 
         except Exception as e:
-
             print("TXT extraction error:", e)
-            text = ""
 
-    # -------------------------
-    # UNSUPPORTED FILE
-    # -------------------------
     else:
 
         return "", {
@@ -250,20 +199,14 @@ def extract_resume(path):
             )
         }
 
-    # -------------------------
-    # EMPTY TEXT
-    # -------------------------
     text = text.strip()
 
     if not text:
 
         return "", {
-            "error": "Readable text not found."
+            "error": "No readable text found in the uploaded file."
         }
 
-    # -------------------------
-    # RESUME INFORMATION
-    # -------------------------
     info = {
         "name": extract_name(text),
         "email": extract_email(text),
