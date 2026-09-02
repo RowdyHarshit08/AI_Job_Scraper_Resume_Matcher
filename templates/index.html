@@ -1,15 +1,97 @@
-{% extends "base.html" %}{% block content %}
+{% extends "base.html" %}
+
+{% block content %}
+
 <section class="hero p-5 rounded-4 mb-4">
-<div class="row align-items-center"><div class="col-lg-8">
-<span class="badge text-bg-primary mb-3">AI-Powered Career Tool</span>
-<h1 class="display-5 fw-bold">Find jobs that match your resume.</h1>
-<p class="lead">Upload your resume, analyze skills, and rank job opportunities with an explainable match score.</p>
-<a class="btn btn-primary btn-lg" href="{{url_for('upload')}}">Get Started</a>
-</div><div class="col-lg-4 text-center"><div class="hero-icon">🤖</div></div></div>
+
+    <div class="row align-items-center">
+
+        <div class="col-lg-8">
+
+            <span class="badge text-bg-primary mb-3">
+                AI-Powered Career Tool
+            </span>
+
+            <h1 class="display-5 fw-bold">
+                Find jobs that match your resume.
+            </h1>
+
+            <p class="lead">
+                Upload your resume, analyze skills, and rank job
+                opportunities with an explainable match score.
+            </p>
+
+            <a
+                class="btn btn-primary btn-lg"
+                href="{{ url_for('jobs') }}"
+            >
+                Get Started
+            </a>
+
+        </div>
+
+        <div class="col-lg-4 text-center">
+
+            <div class="hero-icon">
+                🤖
+            </div>
+
+        </div>
+
+    </div>
+
 </section>
+
+
 <div class="row g-3">
-<div class="col-md-4"><div class="card p-4 h-100"><h5>📄 Resume Parsing</h5><p>Extract text and detect common technical skills from PDF/DOCX resumes.</p></div></div>
-<div class="col-md-4"><div class="card p-4 h-100"><h5>🎯 Smart Matching</h5><p>Combine skill overlap and TF-IDF cosine similarity into a 0–100 score.</p></div></div>
-<div class="col-md-4"><div class="card p-4 h-100"><h5>💡 AI Insights</h5><p>Use OpenAI when configured, with a local NLP fallback when it is unavailable.</p></div></div>
+
+    <div class="col-md-4">
+
+        <div class="card p-4 h-100">
+
+            <h5>📄 Resume Parsing</h5>
+
+            <p>
+                Extract text and detect common technical skills
+                from PDF/DOCX resumes.
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <div class="col-md-4">
+
+        <div class="card p-4 h-100">
+
+            <h5>🎯 Smart Matching</h5>
+
+            <p>
+                Combine skill overlap and TF-IDF cosine similarity
+                into a 0–100 score.
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <div class="col-md-4">
+
+        <div class="card p-4 h-100">
+
+            <h5>💡 AI Insights</h5>
+
+            <p>
+                Use OpenAI when configured, with a local NLP fallback
+                when it is unavailable.
+            </p>
+
+        </div>
+
+    </div>
+
 </div>
+
 {% endblock %}
