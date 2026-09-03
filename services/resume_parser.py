@@ -1,7 +1,6 @@
 import os
 import re
 import gc
-
 import fitz
 from docx import Document
 
@@ -9,8 +8,8 @@ from docx import Document
 SKILLS = [
     "python",
     "java",
-    "c",
     "c++",
+    "c",
     "sql",
     "oracle",
     "html",
@@ -25,7 +24,6 @@ SKILLS = [
     "algorithms",
     "nlp",
     "git",
-    "github",
     "flask",
     "pandas",
     "numpy",
@@ -34,7 +32,6 @@ SKILLS = [
     "pytorch",
     "excel",
     "statistics",
-    "data analysis",
     "etl",
     "cloud",
     "data engineering",
@@ -42,113 +39,81 @@ SKILLS = [
 ]
 
 
-# -------------------------------------------------
-# PDF TEXT EXTRACTION
-# -------------------------------------------------
-
 def extract_pdf_text(path):
+    """
+    First tries normal PDF text extraction.
+    If the PDF is scanned/image-based, it automatically
+    falls back to OCR page by page.
+    """
 
     text = ""
 
     try:
+        document = fitz.open(path)
+    except Exception as e:
+        return "", f"PDF could not be opened: {str(e)}"
 
-        doc = fitz.open(path)
+    # Password-protected PDF
+    if document.needs_pass:
+        document.close()
+        return "", "This PDF is password protected. Please upload an unlocked PDF."
 
-        if doc.needs_pass:
-
-            print("Password protected PDF detected.")
-
-            doc.close()
-
-            return ""
-
-        for page in doc:
-
+    try:
+        # -------------------------------------------------
+        # STEP 1: Normal text extraction
+        # -------------------------------------------------
+        for page in document:
             try:
-
-                page_text = page.get_text("text")
-
+                page_text = page.get_text("text", sort=True)
                 if page_text:
-
                     text += page_text + "\n"
+            except Exception:
+                continue
 
-            except Exception as e:
+        text = text.strip()
 
-                print(
-                    "PDF page text error:",
-                    e
-                )
+        # If enough text was found, OCR is not required.
+        if len(text) >= 50:
+            document.close()
+            return text, ""
 
-        doc.close()
+        # -------------------------------------------------
+        # STEP 2: OCR for scanned/image PDFs
+        # -------------------------------------------------
+        try:
+            import pytesseract
+            from PIL import Image
+        except Exception as e:
+            document.close()
+            return "", f"OCR libraries are unavailable: {str(e)}"
 
-    except Exception as e:
+        ocr_text = ""
 
-        print(
-            "PDF extraction error:",
-            e
-        )
+        # Try Hindi + English first.
+        # If Hindi language data is unavailable, English is used.
+        try:
+            languages = pytesseract.get_languages(config="")
+        except Exception:
+            languages = ["eng"]
 
-    return text.strip()
+        if "hin" in languages and "eng" in languages:
+            ocr_lang = "eng+hin"
+        elif "eng" in languages:
+            ocr_lang = "eng"
+        elif "hin" in languages:
+            ocr_lang = "hin"
+        else:
+            ocr_lang = None
 
+        if not ocr_lang:
+            document.close()
+            return "", "OCR language data is not installed on the server."
 
-# -------------------------------------------------
-# OCR FOR SCANNED PDF
-# -------------------------------------------------
-
-def ocr_pdf(path):
-
-    text = ""
-
-    try:
-
-        import pytesseract
-        from PIL import Image
-
-    except Exception as e:
-
-        print(
-            "OCR libraries unavailable:",
-            e
-        )
-
-        return ""
-
-    try:
-
-        doc = fitz.open(path)
-
-        if doc.needs_pass:
-
-            print(
-                "Password protected PDF cannot be OCR processed."
-            )
-
-            doc.close()
-
-            return ""
-
-        total_pages = len(doc)
-
-        print(
-            f"Starting OCR for {total_pages} pages..."
-        )
-
-        for page_number in range(total_pages):
+        for page_number, page in enumerate(document):
 
             try:
-
-                page = doc[page_number]
-
-                print(
-                    f"OCR page "
-                    f"{page_number + 1}/{total_pages}"
-                )
-
-                # Low resolution keeps RAM usage low
-                matrix = fitz.Matrix(
-                    1.25,
-                    1.25
-                )
+                # Controlled resolution to avoid Render memory problems.
+                matrix = fitz.Matrix(1.5, 1.5)
 
                 pix = page.get_pixmap(
                     matrix=matrix,
@@ -163,165 +128,190 @@ def ocr_pdf(path):
                 )
 
                 try:
-
-                    page_text = pytesseract.image_to_string(
+                    page_ocr = pytesseract.image_to_string(
                         image,
-                        lang="eng",
+                        lang=ocr_lang,
                         config="--psm 6",
-                        timeout=12
+                        timeout=30
                     )
 
-                    if page_text:
+                    if page_ocr:
+                        ocr_text += page_ocr + "\n"
 
-                        text += (
-                            page_text +
-                            "\n"
+                except Exception:
+                    # Try English as a final fallback
+                    try:
+                        page_ocr = pytesseract.image_to_string(
+                            image,
+                            lang="eng",
+                            config="--psm 6",
+                            timeout=30
                         )
 
-                except Exception as e:
+                        if page_ocr:
+                            ocr_text += page_ocr + "\n"
 
-                    print(
-                        f"OCR failed on page "
-                        f"{page_number + 1}:",
-                        e
-                    )
+                    except Exception:
+                        pass
 
-                # Free memory immediately
+                # Release memory after EVERY page.
                 image.close()
-
-                del image
                 del pix
-
                 gc.collect()
 
-            except Exception as e:
+            except Exception:
+                continue
 
-                print(
-                    f"Could not process OCR page "
-                    f"{page_number + 1}:",
-                    e
-                )
+        document.close()
 
-                gc.collect()
+        ocr_text = ocr_text.strip()
 
-        doc.close()
+        if len(ocr_text) >= 20:
+            return ocr_text, ""
 
-    except Exception as e:
-
-        print(
-            "OCR PDF error:",
-            e
+        return "", (
+            "Could not read text from this PDF. "
+            "The PDF may be corrupted, encrypted, or the scan quality "
+            "may be too poor for OCR."
         )
 
-    return text.strip()
+    except Exception as e:
+        try:
+            document.close()
+        except Exception:
+            pass
 
+        return "", f"PDF processing failed: {str(e)}"
 
-# -------------------------------------------------
-# DOCX EXTRACTION
-# -------------------------------------------------
 
 def extract_docx_text(path):
-
-    text = ""
-
     try:
+        document = Document(path)
 
-        doc = Document(path)
+        parts = []
 
-        for paragraph in doc.paragraphs:
+        # Paragraphs
+        for paragraph in document.paragraphs:
+            if paragraph.text.strip():
+                parts.append(paragraph.text.strip())
 
-            if paragraph.text:
-
-                text += (
-                    paragraph.text +
-                    "\n"
-                )
-
-        for table in doc.tables:
-
+        # Tables
+        for table in document.tables:
             for row in table.rows:
-
                 for cell in row.cells:
+                    if cell.text.strip():
+                        parts.append(cell.text.strip())
 
-                    if cell.text:
+        return "\n".join(parts)
 
-                        text += (
-                            cell.text +
-                            " "
-                        )
-
-    except Exception as e:
-
-        print(
-            "DOCX extraction error:",
-            e
-        )
-
-    return text.strip()
+    except Exception:
+        return ""
 
 
-# -------------------------------------------------
-# SKILL DETECTION
-# -------------------------------------------------
+def extract_txt_text(path):
+    try:
+        with open(
+            path,
+            "r",
+            encoding="utf-8",
+            errors="ignore"
+        ) as file:
+            return file.read()
+
+    except Exception:
+        return ""
+
 
 def detect_skills(text):
+    """
+    Detect skills from extracted resume text.
+    """
 
-    text_lower = text.lower()
+    lower_text = text.lower()
 
-    found = []
+    detected = set()
 
     for skill in SKILLS:
 
-        if skill.lower() in text_lower:
+        # Flexible matching for common variations.
+        if skill.lower() in lower_text:
+            detected.add(skill)
 
-            found.append(skill)
-
-    return sorted(
-        set(found)
-    )
+    return sorted(detected)
 
 
-# -------------------------------------------------
-# EMAIL
-# -------------------------------------------------
+def extract_resume(path):
+    """
+    Main resume extraction function.
 
-def extract_email(text):
+    Supports:
+    PDF
+    DOCX
+    TXT
+    """
 
-    match = re.search(
-        r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
-        text
-    )
+    if not path or not os.path.exists(path):
+        return "", {
+            "error": "Resume file could not be found."
+        }
 
-    if match:
+    extension = os.path.splitext(path)[1].lower()
 
-        return match.group(0)
+    text = ""
+    error = ""
 
-    return ""
+    # -------------------------------------------------
+    # PDF
+    # -------------------------------------------------
+    if extension == ".pdf":
 
+        text, error = extract_pdf_text(path)
 
-# -------------------------------------------------
-# PHONE
-# -------------------------------------------------
+    # -------------------------------------------------
+    # DOCX
+    # -------------------------------------------------
+    elif extension == ".docx":
 
-def extract_phone(text):
+        text = extract_docx_text(path)
 
-    match = re.search(
-        r"(?:\+91[\s-]?)?[6-9]\d{9}",
-        text
-    )
+        if not text.strip():
+            error = "Could not extract readable text from this DOCX file."
 
-    if match:
+    # -------------------------------------------------
+    # TXT
+    # -------------------------------------------------
+    elif extension == ".txt":
 
-        return match.group(0)
+        text = extract_txt_text(path)
 
-    return ""
+        if not text.strip():
+            error = "Could not read this TXT file."
 
+    # -------------------------------------------------
+    # Unsupported file
+    # -------------------------------------------------
+    else:
 
-# -------------------------------------------------
-# NAME
-# -------------------------------------------------
+        return "", {
+            "error": (
+                "Unsupported file type. "
+                "Please upload a PDF, DOCX or TXT file."
+            )
+        }
 
-def extract_name(text):
+    text = text.strip()
+
+    if not text:
+
+        return "", {
+            "error": error or (
+                "No readable text was found in this resume."
+            )
+        }
+
+    # -------------------------------------------------
+    # Extract candidate information
+    # -------------------------------------------------
 
     lines = [
         line.strip()
@@ -329,183 +319,42 @@ def extract_name(text):
         if line.strip()
     ]
 
-    if not lines:
+    # Candidate name
+    candidate_name = "Candidate"
 
-        return ""
+    if lines:
+        candidate_name = lines[0][:100]
 
-    blocked = [
-        "resume",
-        "curriculum",
-        "email",
-        "phone",
-        "mobile",
-        "objective",
-        "developer",
-        "engineer",
-        "education",
-        "skills",
-        "experience",
-        "contact"
-    ]
+    # Email
+    email_match = re.search(
+        r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}",
+        text
+    )
 
-    for line in lines[:15]:
+    email = (
+        email_match.group(0)
+        if email_match
+        else ""
+    )
 
-        clean = re.sub(
-            r"[^A-Za-z .'-]",
-            "",
-            line
-        ).strip()
+    # Indian phone number
+    phone_match = re.search(
+        r"(?:\+91[\s-]?)?[6-9]\d{9}",
+        text
+    )
 
-        words = clean.split()
+    phone = (
+        phone_match.group(0)
+        if phone_match
+        else ""
+    )
 
-        if 2 <= len(words) <= 4:
+    # Skills
+    skills = detect_skills(text)
 
-            if not any(
-                word in clean.lower()
-                for word in blocked
-            ):
-
-                return clean
-
-    return lines[0]
-
-
-# -------------------------------------------------
-# MAIN RESUME FUNCTION
-# -------------------------------------------------
-
-def extract_resume(path):
-
-    extension = os.path.splitext(
-        path
-    )[1].lower()
-
-    text = ""
-
-    # ---------------------------------------------
-    # PDF
-    # ---------------------------------------------
-
-    if extension == ".pdf":
-
-        print(
-            "Trying normal PDF text extraction..."
-        )
-
-        text = extract_pdf_text(
-            path
-        )
-
-        # Normal PDF contains little/no text
-        # → automatically use OCR
-        if len(text.strip()) < 50:
-
-            print(
-                "Normal PDF text not sufficient."
-            )
-
-            print(
-                "Trying OCR for scanned/image PDF..."
-            )
-
-            ocr_text = ocr_pdf(
-                path
-            )
-
-            if ocr_text:
-
-                text = ocr_text
-
-    # ---------------------------------------------
-    # DOCX
-    # ---------------------------------------------
-
-    elif extension == ".docx":
-
-        print(
-            "Extracting DOCX text..."
-        )
-
-        text = extract_docx_text(
-            path
-        )
-
-    # ---------------------------------------------
-    # TXT
-    # ---------------------------------------------
-
-    elif extension == ".txt":
-
-        try:
-
-            with open(
-                path,
-                "r",
-                encoding="utf-8",
-                errors="ignore"
-            ) as file:
-
-                text = file.read()
-
-        except Exception as e:
-
-            print(
-                "TXT extraction error:",
-                e
-            )
-
-    # ---------------------------------------------
-    # UNSUPPORTED
-    # ---------------------------------------------
-
-    else:
-
-        return "", {
-            "error": (
-                "Unsupported file format. "
-                "Please upload PDF, DOCX or TXT."
-            )
-        }
-
-    # ---------------------------------------------
-    # FINAL VALIDATION
-    # ---------------------------------------------
-
-    text = text.strip()
-
-    if not text:
-
-        return "", {
-            "error": (
-                "Unable to extract readable text "
-                "from this file. The PDF may be "
-                "corrupted, password protected, "
-                "or contain an unsupported image format."
-            )
-        }
-
-    # ---------------------------------------------
-    # RESUME INFORMATION
-    # ---------------------------------------------
-
-    info = {
-
-        "name": extract_name(
-            text
-        ),
-
-        "email": extract_email(
-            text
-        ),
-
-        "phone": extract_phone(
-            text
-        ),
-
-        "skills": detect_skills(
-            text
-        ),
-
+    return text, {
+        "name": candidate_name,
+        "email": email,
+        "phone": phone,
+        "skills": skills,
     }
-
-    return text, info
